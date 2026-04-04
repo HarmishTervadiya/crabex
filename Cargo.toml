@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "engine",
+    "tui",
+    "bot-mm",
+    "bot-arb"
+]
