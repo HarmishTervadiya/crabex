@@ -4,7 +4,7 @@ pub enum Side {
     Sell,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OrderType {
     Market,
     Limit,

@@ -1,5 +1,6 @@
-use crate::types::Account;
-use std::collections::HashMap;
+use crate::types::{Account, Side, Trade};
+use crate::{orderbook::OrderBook, types::Order};
+use std::collections::{BTreeMap, HashMap};
 
 pub enum Asset {
     Base,
@@ -8,12 +9,14 @@ pub enum Asset {
 
 pub struct Engine {
     pub accounts: HashMap<u64, Account>,
+    pub orderbook: OrderBook,
 }
 
 impl Engine {
     pub fn new() -> Self {
         Self {
             accounts: HashMap::new(),
+            orderbook: OrderBook::new(),
         }
     }
 
@@ -106,6 +109,52 @@ impl Engine {
                     Err("Not enough quote funds".to_string())
                 }
             }
+        }
+    }
+
+    pub fn place_order(&mut self, incoming_order: Order) -> Result<(), String> {
+        if incoming_order.price == 0 || incoming_order.quantity == 0 {
+            eprintln!("Invalid price or qunatity in order");
+            return Err("Invalid price or qunatity in order".to_string());
+        }
+
+        match incoming_order.side {
+            Side::Buy => {
+                let cost = incoming_order.price * incoming_order.quantity;
+                self.lock_funds(incoming_order.trader_id, cost, Asset::Quote)?;
+            }
+            Side::Sell => {
+                self.lock_funds(
+                    incoming_order.trader_id,
+                    incoming_order.quantity,
+                    Asset::Base,
+                )?;
+            }
+        }
+
+        let mut trades = self.orderbook.process_order(incoming_order);
+        self.settle_trades(trades);
+        Ok(())
+    }
+
+    pub fn settle_trades(&mut self, mut trades: Vec<Trade>) {
+        for trade in trades {
+            let total_cost = trade.price * trade.quantity;
+
+            if let Some(buyer) = self.accounts.get_mut(&trade.buyer_id) {
+                buyer.quote_qty_locked -= total_cost;
+                buyer.base_qty_available += trade.quantity;
+            }
+
+            if let Some(seller) = self.accounts.get_mut(&trade.seller_id) {
+                seller.base_qty_locked -= trade.quantity;
+                seller.quote_qty_available += total_cost;
+            }
+
+            println!(
+                "Settled Trade {} between Buyer {} and Seller {}",
+                trade.trade_id, trade.buyer_id, trade.seller_id
+            );
         }
     }
 }
