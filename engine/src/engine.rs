@@ -118,6 +118,10 @@ impl Engine {
             return Err("Invalid price or qunatity in order".to_string());
         }
 
+        let original_price = incoming_order.price.clone();
+        let original_side = incoming_order.side.clone();
+        let trader_id = incoming_order.trader_id.clone();
+
         match incoming_order.side {
             Side::Buy => {
                 let cost = incoming_order.price * incoming_order.quantity;
@@ -133,6 +137,25 @@ impl Engine {
         }
 
         let mut trades = self.orderbook.process_order(incoming_order);
+
+        // Refund logic
+        if original_side == Side::Buy {
+            for trade in &trades {
+                let price_improvement = original_price - trade.price;
+                let refund_amount = price_improvement * trade.quantity;
+
+                if refund_amount > 0 {
+                    if let Some(account) = self.accounts.get_mut(&trader_id) {
+                        account.quote_qty_locked -= refund_amount;
+                        account.quote_qty_available += refund_amount;
+                        println!(
+                            "Refunded {} to Buyer {} for price improvement!",
+                            refund_amount, trader_id
+                        );
+                    }
+                }
+            }
+        }
         self.settle_trades(trades);
         Ok(())
     }
