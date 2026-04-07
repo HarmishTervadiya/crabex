@@ -3,22 +3,19 @@ mod orderbook;
 mod types;
 
 use crate::engine::{Asset, Engine};
-use crate::types::{EngineMessage, Order, OrderType, Side};
+use crate::types::EngineMessage;
 use tokio::sync::mpsc;
-use tokio::time::{Duration, sleep};
 
 #[tokio::main]
 async fn main() {
     println!("🦀 Booting Crabex Engine...");
-
     let (tx, mut rx) = mpsc::channel::<EngineMessage>(1000);
 
     tokio::spawn(async move {
         let mut engine = Engine::new();
-        engine.deposit(111, 100, Asset::Base);
-        engine.deposit(111, 100, Asset::Quote);
-        engine.deposit(222, 100, Asset::Base);
-        engine.deposit(222, 100, Asset::Quote);
+        engine.deposit(111, 1_000_000_000, Asset::Base);
+        engine.deposit(111, 1_000_000_000, Asset::Quote);
+
         println!("🟢 Engine is now listening for orders in the background...");
 
         while let Some(command) = rx.recv().await {
@@ -43,47 +40,42 @@ async fn main() {
         println!("Engine shutting down (pipe closed).");
     });
 
-    sleep(Duration::from_millis(10)).await;
-
-    let sell_order = Order {
-        order_id: 1,
-        order_type: OrderType::Limit,
-        price: 5,
-        quantity: 10,
-        side: Side::Sell,
-        timestamp: 0,
-        trader_id: 111,
-    };
-
-    let buy_order = Order {
-        order_id: 2,
-        order_type: OrderType::Limit,
-        price: 10,
-        quantity: 10,
-        side: Side::Buy,
-        timestamp: 0,
-        trader_id: 222,
-    };
-
-    println!("\n[Bot] Shooting Sell Order down the pipe...");
-    tx.send(EngineMessage::PlaceOrder((sell_order)))
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8000")
         .await
         .unwrap();
+    println!("TCP Gateway open! Listening for connections on port 8080...");
 
-    println!("[Bot] Shooting Buy Order down the pipe...");
-    tx.send(EngineMessage::PlaceOrder((buy_order)))
-        .await
-        .unwrap();
+    while let Ok((mut socket, addr)) = listener.accept().await {
+        println!("New connection from: {}", addr);
 
-    println!("[Bot] Cancelling Order 99...");
-    tx.send(EngineMessage::CancelOrder {
-        side: Side::Buy,
-        price: 10,
-        target_order_id: 99,
-    })
-    .await
-    .unwrap();
-    sleep(Duration::from_millis(50)).await;
+        let tx_clone = tx.clone();
 
-    println!("Program finished successfully!");
+        tokio::spawn(async move {
+            let (reader, _) = socket.split();
+            let mut buf_reader = tokio::io::BufReader::new(reader);
+            let mut line = String::new();
+
+            while let Ok(bytes_read) =
+                tokio::io::AsyncBufReadExt::read_line(&mut buf_reader, &mut line).await
+            {
+                if bytes_read == 0 {
+                    println!("Client disconnected.");
+                    break;
+                }
+
+                match serde_json::from_str::<EngineMessage>(&line) {
+                    Ok(msg) => {
+                        if let Err(e) = tx_clone.send(msg).await {
+                            eprintln!("Failed to send message to engine: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("🔴 Invalid JSON received: {}", e);
+                    }
+                }
+
+                line.clear();
+            }
+        });
+    }
 }

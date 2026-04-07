@@ -1,16 +1,18 @@
-#[derive(Debug, PartialEq, Eq, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum Side {
     Buy,
     Sell,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OrderType {
     Market,
     Limit,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Order {
     pub order_id: u64,
     pub trader_id: u64,
@@ -21,7 +23,7 @@ pub struct Order {
     pub timestamp: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trade {
     pub trade_id: u64,
     pub buyer_id: u64,
@@ -31,7 +33,7 @@ pub struct Trade {
     pub timestamp: u64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Account {
     pub base_qty_available: u64,
     pub base_qty_locked: u64,
@@ -39,6 +41,7 @@ pub struct Account {
     pub quote_qty_locked: u64,
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum EngineMessage {
     PlaceOrder(Order),
     CancelOrder {
