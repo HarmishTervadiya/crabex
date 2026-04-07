@@ -1,6 +1,6 @@
-use crate::types::{Account, Side, Trade};
-use crate::{orderbook::OrderBook, types::Order};
-use std::collections::{BTreeMap, HashMap};
+use crate::types::{Account, Side, Trade, Order};
+use crate::{orderbook::OrderBook};
+use std::collections::{HashMap};
 
 pub enum Asset {
     Base,
@@ -157,6 +157,38 @@ impl Engine {
             }
         }
         self.settle_trades(trades);
+        Ok(())
+    }
+
+    pub fn place_cancel_order(
+        &mut self,
+        side: Side,
+        price: u64,
+        target_order_id: u64,
+    ) -> Result<(), String> {
+        if price == 0 {
+            return Err("Insufficient amount".to_string());
+        }
+
+        if let Some(cancelled_order) =
+            self.orderbook
+                .cancel_order(side.clone(), price, target_order_id)
+        {
+            let account = self.accounts.get_mut(&cancelled_order.trader_id).unwrap();
+
+            match side {
+                Side::Buy => {
+                    let cost = cancelled_order.price * cancelled_order.quantity;
+                    account.quote_qty_available += cost;
+                    account.quote_qty_locked -= cost;
+                }
+                Side::Sell => {
+                    account.base_qty_available += cancelled_order.quantity;
+                    account.base_qty_locked -= cancelled_order.quantity;
+                }
+            }
+        }
+
         Ok(())
     }
 

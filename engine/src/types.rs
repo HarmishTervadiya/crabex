@@ -38,3 +38,12 @@ pub struct Account {
     pub quote_qty_available: u64,
     pub quote_qty_locked: u64,
 }
+
+pub enum EngineMessage {
+    PlaceOrder(Order),
+    CancelOrder {
+        side: Side,
+        price: u64,
+        target_order_id: u64,
+    },
+}

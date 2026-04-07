@@ -46,8 +46,8 @@ impl OrderBook {
 
                             trades.push(Trade {
                                 trade_id: self.trade_counter,
-                                buyer_id: incoming_order.trader_id, 
-                                seller_id: resting_ask.trader_id,  
+                                buyer_id: incoming_order.trader_id,
+                                seller_id: resting_ask.trader_id,
                                 price: ask_price,
                                 quantity: qty,
                                 timestamp: current_timestamp,
@@ -140,5 +140,29 @@ impl OrderBook {
         }
 
         trades
+    }
+
+    pub fn cancel_order(&mut self, side: Side, price: u64, target_order_id: u64) -> Option<Order> {
+        let tree: &mut BTreeMap<u64, VecDeque<Order>> = match side {
+            Side::Buy => &mut self.bids,
+            Side::Sell => &mut self.asks,
+        };
+
+        if let Some(queue) = tree.get_mut(&price) {
+            let cancelled_order = queue
+                .iter()
+                .find(|order| order.order_id == target_order_id)
+                .cloned();
+
+            queue.retain(|order| order.order_id != target_order_id);
+
+            if queue.is_empty() {
+                tree.remove(&price);
+            }
+
+            return cancelled_order;
+        }
+
+        None
     }
 }

@@ -3,19 +3,48 @@ mod orderbook;
 mod types;
 
 use crate::engine::{Asset, Engine};
-use crate::types::{Order, OrderType, Side};
+use crate::types::{EngineMessage, Order, OrderType, Side};
+use tokio::sync::mpsc;
+use tokio::time::{Duration, sleep};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     println!("🦀 Booting Crabex Engine...");
-    let mut engine = Engine::new();
 
-    engine.deposit(111, 100, Asset::Base);  
-    engine.deposit(111, 100, Asset::Quote); 
+    let (tx, mut rx) = mpsc::channel::<EngineMessage>(1000);
 
-    engine.deposit(222, 100, Asset::Base);  
-    engine.deposit(222, 100, Asset::Quote); 
+    tokio::spawn(async move {
+        let mut engine = Engine::new();
+        engine.deposit(111, 100, Asset::Base);
+        engine.deposit(111, 100, Asset::Quote);
+        engine.deposit(222, 100, Asset::Base);
+        engine.deposit(222, 100, Asset::Quote);
+        println!("🟢 Engine is now listening for orders in the background...");
 
-    println!("\n--- User 111 places a LIMIT SELL ---");
+        while let Some(command) = rx.recv().await {
+            match command {
+                EngineMessage::CancelOrder {
+                    side,
+                    price,
+                    target_order_id,
+                } => {
+                    if let Err(e) = engine.place_cancel_order(side, price, target_order_id) {
+                        eprintln!("🔴 Order cancellation rejected: {}", e);
+                    }
+                }
+                EngineMessage::PlaceOrder(order) => {
+                    if let Err(e) = engine.place_order(order) {
+                        eprintln!("🔴 Order rejected: {}", e);
+                    }
+                }
+            };
+        }
+
+        println!("Engine shutting down (pipe closed).");
+    });
+
+    sleep(Duration::from_millis(10)).await;
+
     let sell_order = Order {
         order_id: 1,
         order_type: OrderType::Limit,
@@ -25,9 +54,7 @@ fn main() {
         timestamp: 0,
         trader_id: 111,
     };
-    engine.place_order(sell_order).unwrap(); 
 
-    println!("\n--- User 222 places a LIMIT BUY ---");
     let buy_order = Order {
         order_id: 2,
         order_type: OrderType::Limit,
@@ -37,10 +64,26 @@ fn main() {
         timestamp: 0,
         trader_id: 222,
     };
-    engine.place_order(buy_order).unwrap(); 
 
-    println!("\n--- FINAL BALANCES ---");
-    println!("User 111 (Seller): {:#?}", engine.accounts.get(&111).unwrap());
-    
-    println!("User 222 (Buyer): {:#?}", engine.accounts.get(&222).unwrap());
+    println!("\n[Bot] Shooting Sell Order down the pipe...");
+    tx.send(EngineMessage::PlaceOrder((sell_order)))
+        .await
+        .unwrap();
+
+    println!("[Bot] Shooting Buy Order down the pipe...");
+    tx.send(EngineMessage::PlaceOrder((buy_order)))
+        .await
+        .unwrap();
+
+    println!("[Bot] Cancelling Order 99...");
+    tx.send(EngineMessage::CancelOrder {
+        side: Side::Buy,
+        price: 10,
+        target_order_id: 99,
+    })
+    .await
+    .unwrap();
+    sleep(Duration::from_millis(50)).await;
+
+    println!("Program finished successfully!");
 }
