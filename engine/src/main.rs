@@ -3,7 +3,7 @@ mod orderbook;
 mod types;
 
 use crate::engine::{Asset, Engine};
-use crate::types::{EngineMessage, MarketData};
+use crate::types::{EngineMessage};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
