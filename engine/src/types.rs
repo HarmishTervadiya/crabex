@@ -50,3 +50,9 @@ pub enum EngineMessage {
         target_order_id: u64,
     },
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketData {
+    pub best_bid: Option<u64>,
+    pub best_ask: Option<u64>,
+}

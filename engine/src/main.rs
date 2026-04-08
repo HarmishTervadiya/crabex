@@ -3,7 +3,8 @@ mod orderbook;
 mod types;
 
 use crate::engine::{Asset, Engine};
-use crate::types::EngineMessage;
+use crate::types::{EngineMessage, MarketData};
+use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -11,10 +12,16 @@ async fn main() {
     println!("🦀 Booting Crabex Engine...");
     let (tx, mut rx) = mpsc::channel::<EngineMessage>(1000);
 
+    let (bcast_tx, _) = broadcast::channel::<String>(1000);
+
+    let engine_bcast_tx = bcast_tx.clone();
     tokio::spawn(async move {
-        let mut engine = Engine::new();
+        let mut engine = Engine::new(engine_bcast_tx);
+
         engine.deposit(111, 1_000_000_000, Asset::Base);
         engine.deposit(111, 1_000_000_000, Asset::Quote);
+        engine.deposit(222, 1_000_000_000, Asset::Base);
+        engine.deposit(222, 1_000_000_000, Asset::Quote);
 
         println!("🟢 Engine is now listening for orders in the background...");
 
@@ -49,32 +56,42 @@ async fn main() {
         println!("New connection from: {}", addr);
 
         let tx_clone = tx.clone();
+        let mut bcast_rx = bcast_tx.subscribe();
 
         tokio::spawn(async move {
-            let (reader, _) = socket.split();
+            let (reader, mut writer) = socket.split();
             let mut buf_reader = tokio::io::BufReader::new(reader);
             let mut line = String::new();
 
-            while let Ok(bytes_read) =
-                tokio::io::AsyncBufReadExt::read_line(&mut buf_reader, &mut line).await
-            {
-                if bytes_read == 0 {
-                    println!("Client disconnected.");
-                    break;
-                }
-
-                match serde_json::from_str::<EngineMessage>(&line) {
-                    Ok(msg) => {
-                        if let Err(e) = tx_clone.send(msg).await {
-                            eprintln!("Failed to send message to engine: {}", e);
+            loop {
+                tokio::select! {
+                   result=tokio::io::AsyncBufReadExt::read_line(&mut buf_reader, &mut line) => {
+                       match result {
+                           Ok(0) => {
+                               println!("Client disconnected.");
+                               break;
+                           },
+                           Ok(_)=> {
+                            if let Ok(msg) = serde_json::from_str::<EngineMessage>(&line) {
+                                   let _ = tx_clone.send(msg).await;
+                               }
+                               line.clear();
+                           }
+                           Err(_) => break,
+                       }
+                   },
+                   result = bcast_rx.recv() => {
+                        match result {
+                            Ok(market_data_json) => {
+                                if tokio::io::AsyncWriteExt::write_all(&mut writer, market_data_json.as_bytes()).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(_) => break,
                         }
                     }
-                    Err(e) => {
-                        eprintln!("🔴 Invalid JSON received: {}", e);
-                    }
-                }
 
-                line.clear();
+                }
             }
         });
     }

@@ -165,4 +165,12 @@ impl OrderBook {
 
         None
     }
+
+    pub fn best_bid(&self) -> Option<u64> {
+        self.bids.keys().rev().next().copied()
+    }
+
+    pub fn best_ask(&self) -> Option<u64> {
+        self.asks.keys().next().copied()
+    }
 }

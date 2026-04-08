@@ -1,6 +1,8 @@
-use crate::types::{Account, Side, Trade, Order};
-use crate::{orderbook::OrderBook};
-use std::collections::{HashMap};
+use tokio::sync::broadcast;
+
+use crate::orderbook::OrderBook;
+use crate::types::{Account, MarketData, Order, Side, Trade};
+use std::collections::HashMap;
 
 pub enum Asset {
     Base,
@@ -10,13 +12,15 @@ pub enum Asset {
 pub struct Engine {
     pub accounts: HashMap<u64, Account>,
     pub orderbook: OrderBook,
+    pub bcast_tx: broadcast::Sender<String>,
 }
 
 impl Engine {
-    pub fn new() -> Self {
+    pub fn new(bcast_tx: broadcast::Sender<String>) -> Self {
         Self {
             accounts: HashMap::new(),
             orderbook: OrderBook::new(),
+            bcast_tx,
         }
     }
 
@@ -136,7 +140,7 @@ impl Engine {
             }
         }
 
-        let mut trades = self.orderbook.process_order(incoming_order);
+        let trades = self.orderbook.process_order(incoming_order);
 
         // Refund logic
         if original_side == Side::Buy {
@@ -157,6 +161,16 @@ impl Engine {
             }
         }
         self.settle_trades(trades);
+
+        let market_data = MarketData {
+            best_ask: self.orderbook.best_ask(),
+            best_bid: self.orderbook.best_bid(),
+        };
+
+        if let Ok(json_string) = serde_json::to_string(&market_data) {
+            let _ = self.bcast_tx.send(format!("{}\n", json_string));
+        }
+
         Ok(())
     }
 
