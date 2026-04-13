@@ -53,6 +53,6 @@ pub enum EngineMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketData {
-    pub best_bid: Option<u64>,
-    pub best_ask: Option<u64>,
+    pub bids: Vec<(u64, u64)>,
+    pub asks: Vec<(u64, u64)>,
 }

@@ -162,13 +162,10 @@ impl Engine {
         }
         self.settle_trades(trades);
 
-        let market_data = MarketData {
-            best_ask: self.orderbook.best_ask(),
-            best_bid: self.orderbook.best_bid(),
-        };
+        let market_data = self.orderbook.get_depth(10);
 
         if let Ok(json_string) = serde_json::to_string(&market_data) {
-            let _ = self.bcast_tx.send(format!("{}\n", json_string));
+            let _ = self.bcast_tx.send(format!("{}\n", json_string)); 
         }
 
         Ok(())

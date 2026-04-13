@@ -1,4 +1,4 @@
-use crate::types::{Order, OrderType, Side, Trade};
+use crate::types::{MarketData, Order, OrderType, Side, Trade};
 use std::collections::{BTreeMap, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -172,5 +172,30 @@ impl OrderBook {
 
     pub fn best_ask(&self) -> Option<u64> {
         self.asks.keys().next().copied()
+    }
+
+    pub fn get_depth(&self, levels: usize) -> MarketData {
+        let bids: Vec<(u64, u64)> = self
+            .bids
+            .iter()
+            .rev()
+            .take(levels)
+            .map(|(price, queue)| {
+                let total_qty: u64 = queue.iter().map(|order| order.quantity).sum();
+                (*price, total_qty)
+            })
+            .collect();
+
+        let asks: Vec<(u64, u64)> = self
+            .asks
+            .iter()
+            .take(levels)
+            .map(|(price, queue)| {
+                let total_qty: u64 = queue.iter().map(|order| order.quantity).sum();
+                (*price, total_qty)
+            })
+            .collect();
+
+        MarketData { bids, asks }
     }
 }
